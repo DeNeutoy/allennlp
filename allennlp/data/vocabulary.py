@@ -3,9 +3,12 @@ from typing import Any, Callable, Dict, Union, Sequence
 
 import codecs
 import logging
-import tqdm
+import gzip
+import os
 
 from allennlp.common.util import namespace_match
+
+import tqdm
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -150,13 +153,68 @@ class Vocabulary:
                     if count >= min_count:
                         self.add_token_to_namespace(token, namespace)
 
+    def save_to_files(self, directory: str) -> None:
+        """
+        Persist this Vocabulary to files so it can be reloaded later.
+        Each namespace corresponds to one file.
+
+        Parameters
+        ----------
+        directory : ``str``
+            The directory where we save the serialized vocabulary.
+        """
+
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        # warn if isn't empty
+        if os.listdir(directory):
+            logging.warning("vocabulary serialization directory % is not empty", directory)
+
+        for namespace, mapping in self._index_to_token.items():
+            # each namespace gets written to its own file, in index order
+            with gzip.open(os.path.join(directory, namespace), 'wt', encoding='utf-8') as token_file:
+                num_tokens = len(mapping)
+                for i in range(num_tokens):
+                    print(mapping[i], file=token_file)
+
+    @classmethod
+    def from_files(cls,
+                   directory: str,
+                   non_padded_namespaces: Sequence[str],
+                   namespaces_to_load: Sequence[str] = None) -> 'Vocabulary':
+        """
+        Load a ``Vocabulary`` that was serialized using ``save_to_files``.
+
+        Parameters
+        ----------
+        directory : ``str``
+            The directory containing the serialized vocabulary.
+        non_padded_namespaces: ``str``
+            Namespaces that should not be padded.
+        namespaces_to_load: ``str``
+            A list of namespaces to load. If not provided, every file in the
+            specified directory will be loaded as a namespace.
+        """
+        vocab = Vocabulary(non_padded_namespaces=non_padded_namespaces)
+
+        # check every file in the directory
+        for namespace in os.listdir(directory):
+            # make sure it's a namespace we want to load
+            if namespaces_to_load is None or namespace in namespaces_to_load:
+                path = os.path.join(directory, namespace)
+                with gzip.open(path, 'rt', encoding='utf-8') as input_file:
+                    for token in input_file:
+                        vocab.add_token_to_namespace(token.strip(), namespace=namespace)
+
+        return vocab
+
     def set_from_file(self, filename: str, oov_token: str, namespace: str = "tokens"):
         """
         If you already have a vocabulary file for a trained model somewhere, and you really want to
         use that vocabulary file instead of just setting the vocabulary from a dataset, for
         whatever reason, you can do that with this method.  You must specify the namespace to use,
         and we assume that you want to use padding and OOV tokens for this.
-
         Parameters
         ----------
         filename : ``str``
@@ -178,6 +236,7 @@ class Vocabulary:
                 token = line.strip()
                 self._token_to_index[namespace][token] = i + 1
                 self._index_to_token[namespace].append(token)
+
 
     @classmethod
     def from_dataset(cls,
