@@ -125,6 +125,9 @@ def train_model(param_dict: Dict[str, Any]):
 
     # TODO(Mark): work out how this is going to be built with different options.
     vocab = Vocabulary.from_dataset(train_data)
+
+    if log_dir is not None:
+        vocab.save_to_files(os.path.join(log_dir, "vocabulary"))
     train_data.index_instances(vocab)
     model = Model.from_params(vocab, params.pop('model'))
 
