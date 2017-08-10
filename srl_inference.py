@@ -22,23 +22,25 @@ model_config = {
       "type": "lstm",
       "input_size": 101,
       "hidden_size": 128,
-      "num_layers": 4
+      "num_layers": 4,
     }
 }
 
 model_weights_path = "/net/efs/aristo/allennlp/srl/srl-model3/model_state_epoch_49.th"
-vocab_path = "/net/efs/aristo/allennlp/srl/srl-model3/vocabulary/"
+vocab_path = "/net/efs/aristo/allennlp/srl/srl-model/vocabulary/"
 
 vocab = Vocabulary.from_files(vocab_path)
 model = SemanticRoleLabeler.from_params(vocab, Params(model_config))
 model_weights = torch.load(model_weights_path)
 model.load_state_dict(model_weights)
+model.eval()
 
-demo_text = TextField(["Michael", "was", "excited", "to", "see", "some", "SRL", "output", "!"],
+demo_text = TextField(["Michael", "was", "excited", "to", "see", "some", "SRL", "output", "today", "!"],
                       {"tokens": SingleIdTokenIndexer(lowercase_tokens=True)})
 demo_verb = IndexField(2, demo_text)
 
 output = model.tag(demo_text, demo_verb)
+
 print("Sentence: ", " ".join(demo_text.tokens()))
 print("Predictions: ", output["tags"])
 
