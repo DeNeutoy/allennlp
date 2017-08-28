@@ -17,4 +17,4 @@ class BidafPredictor(Predictor):
         question = TextField(question_tokens, token_indexers=self.token_indexers)
         passage = TextField(passage_tokens, token_indexers=self.token_indexers)
 
-        return sanitize(self.model.predict_span(question, passage))
+        return sanitize(self.model.predict_span(question, passage)["best_span_str"])
