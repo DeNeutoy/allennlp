@@ -1,11 +1,8 @@
 import argparse
 import json
-<<<<<<< HEAD
-=======
 
 import logging
 logger = logging.getLogger(__name__)
->>>>>>> Add real models for SRL and bidaf.
 
 from allennlp.service import server_sanic
 
