@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from allennlp.common import Params
 from allennlp.common.checks import ConfigurationError
 from allennlp.nn.initializers import InitializerApplicator
+from allennlp.nn.regularizers import RegularizerApplicator
 from allennlp.data import Vocabulary
 from allennlp.modules import Seq2SeqEncoder, TimeDistributed, TextFieldEmbedder
 from allennlp.modules.token_embedders import Embedding
@@ -67,10 +68,11 @@ class LanguageModelingSemanticRoleLabeler(Model):
                  binary_feature_dim: int,
                  language_model_feature_dim: int,
                  initializer: InitializerApplicator,
+                 regularizer : Optional[RegularizerApplicator] = None,
                  embedding_dropout: float = 0.0,
                  language_model_embedding_dropout: float = 0.5,
                  use_input_language_model: bool = True) -> None:
-        super(LanguageModelingSemanticRoleLabeler, self).__init__(vocab)
+        super(LanguageModelingSemanticRoleLabeler, self).__init__(vocab, regularizer)
 
         self.text_field_embedder = text_field_embedder
         self.num_classes = self.vocab.get_vocab_size("labels")
@@ -253,13 +255,14 @@ class LanguageModelingSemanticRoleLabeler(Model):
         embedding_dropout = params.pop("embedding_dropout", 0.0)
         use_input_language_model = params.pop("use_input_language_model", True)
         initializer = InitializerApplicator.from_params(params.pop("initializer", []))
-
+        regularizer = RegularizerApplicator.from_params(params.pop("regularizer", []))
         return cls(vocab=vocab,
                    text_field_embedder=text_field_embedder,
                    stacked_encoder=stacked_encoder,
                    binary_feature_dim=binary_feature_dim,
                    language_model_feature_dim=language_modeling_feature_dim,
                    initializer=initializer,
+                   regularizer=regularizer,
                    embedding_dropout=embedding_dropout,
                    language_model_embedding_dropout=language_model_embedding_dropout,
                    use_input_language_model=use_input_language_model)

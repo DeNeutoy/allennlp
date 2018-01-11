@@ -60,5 +60,8 @@
   },
   "vocabulary":{
     "directory_path": "/net/efs/aristo/allennlp/srl_lm/all_inclusive_vocab/vocabulary/"
-  }
+  },
+  "random_seed": ${RANDOM_SEED},
+  "pytorch_seed": ${PYTORCH_SEED},
+
 }
