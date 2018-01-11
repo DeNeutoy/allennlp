@@ -1,7 +1,7 @@
 """
 Assorted utilities for working with neural networks in AllenNLP.
 """
-
+from collections import defaultdict
 from typing import Dict, List, Optional, Any, Tuple, Callable
 import logging
 
@@ -12,6 +12,33 @@ from torch.autograd import Variable
 from allennlp.common.checks import ConfigurationError
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+
+
+def batch_tensor_dicts(tensor_dicts: List[Dict[str, torch.Tensor]],
+                       remove_trailing_dimension: bool = False) -> Dict[str, torch.Tensor]:
+    """
+    Takes a list of tensor dictionaries, where each dictionary is assumed to have matching keys,
+    and returns a single dictionary with all tensors with the same key batched together.
+
+    Parameters
+    ----------
+    tensor_dicts : ``List[Dict[str, torch.Tensor]]``
+        The list of tensor dictionaries to batch.
+    remove_trailing_dimension : ``bool``
+        If ``True``, we will check for a trailing dimension of size 1 on the tensors that are being
+        batched, and remove it if we find it.
+    """
+    key_to_tensors: Dict[str, List[torch.Tensor]] = defaultdict(list)
+    for tensor_dict in tensor_dicts:
+        for key, tensor in tensor_dict.items():
+            key_to_tensors[key].append(tensor)
+    batched_tensors = {}
+    for key, tensor_list in key_to_tensors.items():
+        batched_tensor = torch.stack(tensor_list)
+        if remove_trailing_dimension and all(tensor.size(-1) == 1 for tensor in tensor_list):
+            batched_tensor = batched_tensor.squeeze(-1)
+        batched_tensors[key] = batched_tensor
+    return batched_tensors
 
 
 def get_lengths_from_binary_sequence_mask(mask: torch.Tensor):
@@ -835,3 +862,57 @@ def remove_sentence_boundaries(tensor: torch.Tensor,
             new_mask[i, :(j - 2)] = 1
 
     return tensor_without_boundary_tokens, new_mask
+
+
+def add_positional_features(tensor: torch.Tensor,
+                            min_timescale: float = 1.0,
+                            max_timescale: float = 1.0e4):
+    # pylint: disable=line-too-long
+    """
+    Implements the frequency-based positional encoding described
+    in `Attention is all you Need
+    <https://www.semanticscholar.org/paper/Attention-Is-All-You-Need-Vaswani-Shazeer/0737da0767d77606169cbf4187b83e1ab62f6077>`_ .
+
+    Adds sinusoids of different frequencies to a ``Tensor``. A sinusoid of a
+    different frequency and phase is added to each dimension of the input ``Tensor``.
+    This allows the attention heads to use absolute and relative positions.
+
+    The number of timescales is equal to hidden_dim / 2 within the range
+    (min_timescale, max_timescale). For each timescale, the two sinusoidal
+    signals sin(timestep / timescale) and cos(timestep / timescale) are
+    generated and concatenated along the hidden_dim dimension.
+
+    Parameters
+    ----------
+    tensor : ``torch.Tensor``
+        a Tensor with shape (batch_size, timesteps, hidden_dim).
+    min_timescale : ``float``, optional (default = 1.0)
+        The smallest timescale to use.
+    max_timescale : ``float``, optional (default = 1.0e4)
+        The largest timescale to use.
+
+    Returns
+    -------
+    The input tensor augmented with the sinusoidal frequencies.
+    """
+    _, timesteps, hidden_dim = tensor.size()
+
+    timestep_range = get_range_vector(timesteps, tensor.is_cuda).data.float()
+    # We're generating both cos and sin frequencies,
+    # so half for each.
+    num_timescales = hidden_dim // 2
+    timescale_range = get_range_vector(num_timescales, tensor.is_cuda).data.float()
+
+    log_timescale_increments = math.log(float(max_timescale) / float(min_timescale)) / float(num_timescales - 1)
+    inverse_timescales = min_timescale * torch.exp(timescale_range * -log_timescale_increments)
+
+    # Broadcasted multiplication - shape (timesteps, num_timescales)
+    scaled_time = timestep_range.unsqueeze(1) * inverse_timescales.unsqueeze(0)
+    # shape (timesteps, 2 * num_timescales)
+    sinusoids = Variable(torch.cat([torch.sin(scaled_time), torch.cos(scaled_time)], 1))
+    if hidden_dim % 2 != 0:
+        # if the number of dimensions is odd, the cos and sin
+        # timescales had size (hidden_dim - 1) / 2, so we need
+        # to add a row of zeros to make up the difference.
+        sinusoids = torch.cat([sinusoids, Variable(sinusoids.data.new(timesteps, 1).fill_(0))], 1)
+    return tensor + sinusoids.unsqueeze(0)

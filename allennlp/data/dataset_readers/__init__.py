@@ -15,5 +15,5 @@ from allennlp.data.dataset_readers.snli import SnliReader
 from allennlp.data.dataset_readers.semantic_role_labeling import SrlReader
 from allennlp.data.dataset_readers.seq2seq import Seq2SeqDatasetReader
 from allennlp.data.dataset_readers.coreference_resolution import ConllCorefReader
-from allennlp.data.dataset_readers.language_modelling_srl_dataset_reader import LanguageModelingReader
+from allennlp.data.dataset_readers.language_modelling_srl_dataset_reader import LanguageModellingSrlReader
 

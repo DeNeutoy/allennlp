@@ -401,14 +401,14 @@ class Trainer:
             self._update_learning_rate(epoch, val_metric=this_epoch_val_metric)
 
             epoch_elapsed_time = time.time() - epoch_start_time
-            logger.info("Epoch duration: " + time.strftime("%H:%M:%S", time.gmtime(epoch_elapsed_time)))
+            logger.info("Epoch duration: %s", time.strftime("%H:%M:%S", time.gmtime(epoch_elapsed_time)))
 
             if epoch < self._num_epochs - 1:
                 training_elapsed_time = time.time() - training_start_time
                 estimated_time_remaining = training_elapsed_time * \
                     ((self._num_epochs - epoch_counter) / float(epoch - epoch_counter + 1) - 1)
                 formatted_time = time.strftime("%H:%M:%S", time.gmtime(estimated_time_remaining))
-                logger.info("Estimated training time remaining: " + formatted_time)
+                logger.info("Estimated training time remaining: %s", formatted_time)
 
     def _description_from_metrics(self, metrics: Dict[str, float]) -> str:
         # pylint: disable=no-self-use
@@ -505,12 +505,12 @@ class Trainer:
                     validation_dataset: Optional[Dataset],
                     params: Params) -> 'Trainer':
 
-        patience = params.pop("patience", 2)
+        patience = params.pop_int("patience", 2)
         validation_metric = params.pop("validation_metric", "-loss")
-        num_epochs = params.pop("num_epochs", 20)
-        cuda_device = params.pop("cuda_device", -1)
-        grad_norm = params.pop("grad_norm", None)
-        grad_clipping = params.pop("grad_clipping", None)
+        num_epochs = params.pop_int("num_epochs", 20)
+        cuda_device = params.pop_int("cuda_device", -1)
+        grad_norm = params.pop_float("grad_norm", None)
+        grad_clipping = params.pop_float("grad_clipping", None)
         lr_scheduler_params = params.pop("learning_rate_scheduler", None)
 
         if cuda_device >= 0:
@@ -522,7 +522,7 @@ class Trainer:
             scheduler = LearningRateScheduler.from_params(optimizer, lr_scheduler_params)
         else:
             scheduler = None
-        no_tqdm = params.pop("no_tqdm", False)
+        no_tqdm = params.pop_bool("no_tqdm", False)
 
         params.assert_empty(cls.__name__)
         return Trainer(model, optimizer, iterator,

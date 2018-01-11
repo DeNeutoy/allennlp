@@ -1,4 +1,4 @@
-from typing import Dict, DefaultDict, List, Optional, Iterator, Set, Tuple, Union
+from typing import Dict, DefaultDict, List, Optional, Iterator, Set, Tuple
 from collections import defaultdict
 import codecs
 import os
@@ -9,8 +9,8 @@ import tqdm
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
-TypedSpan = Tuple[Union[int, str], Tuple[int, int]]  # pylint: disable=invalid-name
-
+TypedSpan = Tuple[int, Tuple[int, int]]  # pylint: disable=invalid-name
+TypedStringSpan = Tuple[str, Tuple[int, int]]  # pylint: disable=invalid-name
 
 class OntonotesSentence:
     """
@@ -29,15 +29,16 @@ class OntonotesSentence:
         all parts of speech except the one for which there is some sense or proposition
         annotation are marked with a XX tag. The verb is marked with just a VERB tag.
     parse_tree : ``nltk.Tree``
-        An nltk Tree representing the parse. It does not include POS tags. When the parse information
-        is missing, the parse will have a single node, e.g ``(TOP all of the words ...)``.
+        An nltk Tree representing the parse. It includes POS tags as pre-terminal nodes.
+        When the parse information is missing, the parse will be ``None``.
     predicate_lemmas : ``List[Optional[str]]``
         The predicate lemma of the words for which we have semantic role
         information or word sense information. All other indices are ``None``.
     predicate_framenet_ids : ``List[Optional[int]]``
         The PropBank frameset ID of the lemmas in ``predicate_lemmas``, or ``None``.
-    word_senses : ``List[int]``
-        The word senses for the words in the sentence, or ``None``.
+    word_senses : ``List[Optional[float]]``
+        The word senses for the words in the sentence, or ``None``. These are floats
+        because the word sense can have values after the decimal, like ``1.1``.
     speakers : ``List[Optional[str]]``
         The speaker information for the words in the sentence, if present, or ``None``
         This is the speaker or author name where available. Mostly in Broadcast Conversation
@@ -57,10 +58,10 @@ class OntonotesSentence:
                  sentence_id: int,
                  words: List[str],
                  pos_tags: List[str],
-                 parse_tree: Tree,
+                 parse_tree: Optional[Tree],
                  predicate_lemmas: List[Optional[str]],
                  predicate_framenet_ids: List[Optional[str]],
-                 word_senses: List[Optional[int]],
+                 word_senses: List[Optional[float]],
                  speakers: List[Optional[str]],
                  named_entities: List[str],
                  srl_frames: Dict[str, List[str]],
@@ -229,7 +230,7 @@ class Ontonotes:
         # The FrameNet ID of the predicate.
         predicate_framenet_ids: List[str] = []
         # The sense of the word, if available.
-        word_senses: List[int] = []
+        word_senses: List[float] = []
         # The current speaker, if available.
         speakers: List[str] = []
 
@@ -251,15 +252,30 @@ class Ontonotes:
             pos_tag = conll_components[4]
             parse_piece = conll_components[5]
 
-            # Replace brackets in text with a different
-            # token for parse trees.
-            if word == "(":
-                parse_word = "-LRB-"
-            elif word == ")":
-                parse_word = "-RRB-"
+            # Replace brackets in text and pos tags
+            # with a different token for parse trees.
+            if pos_tag != "XX" and word != "XX":
+                if word == "(":
+                    parse_word = "-LRB-"
+                elif word == ")":
+                    parse_word = "-RRB-"
+                else:
+                    parse_word = word
+                if pos_tag == '(':
+                    pos_tag = '-LRB-'
+                if pos_tag == ')':
+                    pos_tag = '-RRB-'
+                (left_brackets, right_hand_side) = parse_piece.split('*')
+                # only keep ')' if there are nested brackets with nothing in them.
+                right_brackets = right_hand_side.count(')') * ')'
+                parse_piece = f'{left_brackets} ({pos_tag} {parse_word}) {right_brackets}'
             else:
-                parse_word = word
-            parse_piece = parse_piece.replace("*", f" {parse_word}")
+                # There are some bad annotations in the CONLL data.
+                # They contain no information, so to make this explicit,
+                # we just set the parse piece to be None which will result
+                # in the overall parse tree being None.
+                parse_piece = None
+
             lemmatised_word = conll_components[6]
             framenet_id = conll_components[7]
             word_sense = conll_components[8]
@@ -298,14 +314,17 @@ class Ontonotes:
             parse_pieces.append(parse_piece)
             predicate_lemmas.append(lemmatised_word if lemmatised_word != "-" else None)
             predicate_framenet_ids.append(framenet_id if framenet_id != "-" else None)
-            word_senses.append(int(word_sense) if word_sense != "-" else None)
+            word_senses.append(float(word_sense) if word_sense != "-" else None)
             speakers.append(speaker if speaker != "-" else None)
 
         named_entities = span_labels[0]
         srl_frames = {predicate: labels for predicate, labels
                       in zip(verbal_predicates, span_labels[1:])}
 
-        parse_tree = Tree.fromstring("".join(parse_pieces))
+        if all(parse_pieces):
+            parse_tree = Tree.fromstring("".join(parse_pieces))
+        else:
+            parse_tree = None
         coref_span_tuples: Set[TypedSpan] = {(cluster_id, span)
                                              for cluster_id, span_list in clusters.items()
                                              for span in span_list}
@@ -411,3 +430,81 @@ class Ontonotes:
             # Exiting a span, so we reset the current span label for this annotation.
             if ")" in annotation:
                 current_span_labels[annotation_index] = None
+
+
+def bio_tags_to_spans(tag_sequence: List[str],
+                      classes_to_ignore: List[str] = None) -> List[TypedStringSpan]:
+    """
+    Given a sequence corresponding to BIO tags, extracts spans.
+    Spans are inclusive and can be of zero length, representing a single word span.
+    Ill-formed spans are also included (i.e those which do not start with a "B-LABEL"),
+    as otherwise it is possible to get a perfect precision score whilst still predicting
+    ill-formed spans in addition to the correct spans.
+
+    Parameters
+    ----------
+    tag_sequence : List[str], required.
+        The integer class labels for a sequence.
+    classes_to_ignore : List[str], optional (default = None).
+        A list of string class labels `excluding` the bio tag
+        which should be ignored when extracting spans.
+
+    Returns
+    -------
+    spans : List[TypedStringSpan]
+        The typed, extracted spans from the sequence, in the format (label, (span_start, span_end)).
+        Note that the label `does not` contain any BIO tag prefixes.
+    """
+    classes_to_ignore = classes_to_ignore or []
+    spans = set()
+    span_start = 0
+    span_end = 0
+    active_conll_tag = None
+    for index, string_tag in enumerate(tag_sequence):
+        # Actual BIO tag.
+        bio_tag = string_tag[0]
+        conll_tag = string_tag[2:]
+        if bio_tag == "O" or conll_tag in classes_to_ignore:
+            # The span has ended.
+            if active_conll_tag:
+                spans.add((active_conll_tag, (span_start, span_end)))
+            active_conll_tag = None
+            # We don't care about tags we are
+            # told to ignore, so we do nothing.
+            continue
+        elif bio_tag == "U":
+            # The U tag is used to indicate a span of length 1,
+            # so if there's an active tag we end it, and then
+            # we add a "length 0" tag.
+            if active_conll_tag:
+                spans.add((active_conll_tag, (span_start, span_end)))
+            spans.add((conll_tag, (index, index)))
+            active_conll_tag = None
+        elif bio_tag == "B":
+            # We are entering a new span; reset indices
+            # and active tag to new span.
+            if active_conll_tag:
+                spans.add((active_conll_tag, (span_start, span_end)))
+            active_conll_tag = conll_tag
+            span_start = index
+            span_end = index
+        elif bio_tag == "I" and conll_tag == active_conll_tag:
+            # We're inside a span.
+            span_end += 1
+        else:
+            # This is the case the bio label is an "I", but either:
+            # 1) the span hasn't started - i.e. an ill formed span.
+            # 2) The span is an I tag for a different conll annotation.
+            # We'll process the previous span if it exists, but also
+            # include this span. This is important, because otherwise,
+            # a model may get a perfect F1 score whilst still including
+            # false positive ill-formed spans.
+            if active_conll_tag:
+                spans.add((active_conll_tag, (span_start, span_end)))
+            active_conll_tag = conll_tag
+            span_start = index
+            span_end = index
+    # Last token might have been a part of a valid span.
+    if active_conll_tag:
+        spans.add((active_conll_tag, (span_start, span_end)))
+    return list(spans)
