@@ -30,7 +30,16 @@
     "binary_feature_dim": 100,
     "language_modeling_feature_dim": 1024,
     "language_model_embedding_dropout": 0.5,
-    "use_input_language_model": true
+    "use_input_language_model": true,
+    "regularizer": [
+      [
+        "input_language_model_mixture\.scalar_parameters.*",
+        {
+          "type": "l2",
+          "alpha": 0.001
+        }
+      ]
+    ]
   },
   "iterator": {
     "type": "bucket",
@@ -48,5 +57,8 @@
       "type": "adadelta",
       "rho": 0.95
     }
+  },
+  "vocabulary":{
+    "directory_path": "/net/efs/aristo/allennlp/srl_lm/all_inclusive_vocab/vocabulary/"
   }
 }
