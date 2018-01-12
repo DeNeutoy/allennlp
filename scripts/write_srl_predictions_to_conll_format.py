@@ -37,7 +37,7 @@ def main(serialization_directory, device):
     iterator = BasicIterator(batch_size=32)
 
     model_predictions = []
-    for batch in tqdm.tqdm(iterator(dataset, num_epochs=1, shuffle=False, cuda_device=device, for_training=False):
+    for batch in tqdm.tqdm(iterator(dataset, num_epochs=1, shuffle=False, cuda_device=device, for_training=False)):
         result = model(**batch)
         predictions = model.decode(result)
         model_predictions.extend(predictions["tags"])
