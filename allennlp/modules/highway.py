@@ -59,3 +59,42 @@ class Highway(torch.nn.Module):
             gate = torch.nn.functional.sigmoid(gate)
             current_input = gate * linear_part + (1 - gate) * nonlinear_part
         return current_input
+
+
+class RecurrentHighway(torch.nn.Module):
+    """
+    This module will apply a recurrent highway layer to its two inputs,
+    typically the input and output to some other function which you want to gate.
+            gate = sigmoid(W_i * x + W_o * y)
+            output = gate * y + (1 - gate) * (W_i2 * x)
+
+    Parameters
+    ----------
+    input_dim : ``int``
+        The dimensionality of :math:`x` and :math:`y`. We assume the input has shape ``(batch_size,
+        input_dim)``.
+    """
+    def __init__(self, input_dim: int) -> None:
+        super(RecurrentHighway, self).__init__()
+        self._input_dim = input_dim
+        self._gate_projection = torch.nn.Linear(input_dim * 2, input_dim * 2)
+        self._linear_projection = torch.nn.Linear(input_dim, input_dim)
+        # We should bias the highway layer to just carry its input forward.  We do that by
+        # setting the bias on the gate projection to be negative, because then when we add
+        # the two projections (one from the projected input, one from the projected output)
+        # we will get a bias of -1, making the sigmoid biased towards small values, meaning
+        # we bias towards passing through a linear projection of the input.
+        self._gate_projection.bias.data.fill_(-0.5)
+
+    @overrides
+    def forward(self,  # pylint: disable=arguments-differ
+                pre_layer_tensor: torch.Tensor,
+                post_layer_tensor: torch.Tensor) -> torch.Tensor:
+
+        gate_projection = self._gate_projection(torch.cat([pre_layer_tensor, post_layer_tensor], -1))
+        # NOTE: if you modify this, think about whether you should modify the initialization
+        # above, too.
+        gate = sum(gate_projection.split(self._input_dim, -1))
+        gate = torch.nn.functional.sigmoid(gate)
+
+        return gate * post_layer_tensor + (1 - gate) * self._linear_projection(pre_layer_tensor)
