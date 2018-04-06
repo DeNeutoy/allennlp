@@ -111,6 +111,7 @@ class Optimizer(Registrable):
 
         return Optimizer.by_name(optimizer)(parameter_groups, **params.as_dict()) # type: ignore
 
+
 # We just use the Pytorch optimizers, so here we force them into
 # Registry._registry so we can build them from params.
 Registrable._registry[Optimizer] = {   # pylint: disable=protected-access
@@ -123,3 +124,53 @@ Registrable._registry[Optimizer] = {   # pylint: disable=protected-access
         "adamax": torch.optim.Adamax,
         "averaged_sgd": torch.optim.ASGD,
 }
+
+
+@Optimizer.register("noam")
+class NoamOpt:
+    "Optim wrapper that implements rate."
+    def __init__(self, model_size, factor, warmup,
+                 optimizer):
+        self.optimizer = optimizer
+        self._step = 0
+        self.warmup = warmup
+        self.factor = factor
+        self.model_size = model_size
+        self._rate = 0
+        
+    def step(self):
+        "Update parameters and rate"
+        self._step += 1
+        rate = self.rate()
+        for p in self.optimizer.param_groups:
+            p['lr'] = rate
+        self._rate = rate
+        self.optimizer.step()
+        
+    def rate(self, step = None):
+        "Implement `lrate` above"
+        if step is None:
+            step = self._step
+        return self.factor * \
+            (self.model_size ** (-0.5) *
+            min(step ** (-0.5), step * self.warmup ** (-1.5)))
+ 
+    def zero_grad(self):
+        self.optimizer.zero_grad()
+ 
+    def state_dict(self):
+        return {
+            'optimizer': self.optimizer.state_dict(),
+        }
+ 
+    def load_state_dict(self, state_dict):
+        self.optimizer.load_state_dict(state_dict['optimizer'])
+
+    @classmethod
+    def from_params(cls, model_parameters: List, params: Params):
+        warmup = params.pop_int("warmup")
+        model_size = params.pop_int("model_size")
+        factor = params.pop_float("factor")
+        optimizer = Optimizer.by_name(params.pop_choice("type"))(model_parameters, **params.pop("optimizer").as_dict())
+
+        return cls(model_size, factor, warmup, optimizer)
