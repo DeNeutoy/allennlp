@@ -4,7 +4,7 @@ from allennlp.data import Vocabulary
 from allennlp.common.params import Params
 from allennlp.models.simple_tagger import SimpleTagger
 from allennlp.data.dataset_readers import SequenceTaggingDatasetReader
-from allennlp.training.optimizers import Optimizer
+from allennlp.training.optimizers import Optimizer, NoamOpt
 
 
 class TestOptimizer(AllenNlpTestCase):
@@ -38,6 +38,22 @@ class TestOptimizer(AllenNlpTestCase):
         param_groups = optimizer.param_groups
         assert len(param_groups) == 1
         assert param_groups[0]['lr'] == 1
+
+    def test_noam_opt_can_build_from_params(self):
+        
+        params = Params({
+                "type": "noam",
+                  "optimizer": {
+                  "type": "adadelta",
+                  "rho": 0.95
+                  },
+                "warmup": 10,
+                "model_size": 200,
+                "factor": 1.0
+        })
+
+        parameters = [[n, p] for n, p in self.model.named_parameters() if p.requires_grad]
+        opt = NoamOpt.from_params(parameters, params)
 
     def test_optimizer_parameter_groups(self):
         optimizer_params = Params({

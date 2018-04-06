@@ -173,6 +173,6 @@ class NoamOpt(Optimizer):
         factor = params.pop_float("factor")
 
         optimizer_params = params.pop("optimizer")
-        optimizer = Optimizer.by_name(optimizer_params.pop("type"))(model_parameters, **optimizer_params.as_dict())
+        optimizer = Optimizer.by_name(optimizer_params.pop("type"))([param for name, param in model_parameters], **optimizer_params.as_dict())
 
         return cls(model_size, factor, warmup, optimizer)
