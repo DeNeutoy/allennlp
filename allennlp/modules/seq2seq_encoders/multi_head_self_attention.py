@@ -69,6 +69,18 @@ class MultiHeadSelfAttention(Seq2SeqEncoder):
         self._output_projection = Linear(values_dim, self._output_dim)
         self._attention_dropout = Dropout(attention_dropout_prob)
 
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        # The initialisation here is important and a little complicated because
+        # we are doing all of the linear projections at once, but they should
+        # be initialised seperately.
+        gain = 0.5
+        torch.nn.init.xavier_uniform(self._combined_projection.weight.data[:self._attention_dim, :], gain)
+        torch.nn.init.xavier_uniform(self._combined_projection.weight.data[self._attention_dim : (2 * self._attention_dim), :], gain)
+        torch.nn.init.xavier_uniform(self._combined_projection.weight.data[(2 * self._attention_dim):, :], gain)
+        torch.nn.init.xavier_uniform(self._output_projection.weight.data, gain)
+
     def get_input_dim(self):
         return self._input_dim
 
