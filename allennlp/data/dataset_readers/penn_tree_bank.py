@@ -44,10 +44,18 @@ class PennTreeBankConstituencySpanDatasetReader(DatasetReader):
     def __init__(self,
                  token_indexers: Dict[str, TokenIndexer] = None,
                  use_pos_tags: bool = True,
+                 has_morphological_features: bool = False,
+                 use_morphological_features: bool = False,
                  lazy: bool = False) -> None:
         super().__init__(lazy=lazy)
         self._token_indexers = token_indexers or {'tokens': SingleIdTokenIndexer()}
         self._use_pos_tags = use_pos_tags
+        self._has_morphological_features = has_morphological_features
+        self._use_morphological_features = use_morphological_features
+
+        if not self._has_morphological_features and self._use_morphological_features:
+            raise ConfigurationError("You cannot use morphological features if your dataset reader"
+                                     " does not support reading them.")
 
     @overrides
     def _read(self, file_path):
@@ -62,7 +70,31 @@ class PennTreeBankConstituencySpanDatasetReader(DatasetReader):
             # All the trees also contain a root S node.
             if parse.label() == "VROOT":
                 parse = parse[0]
-            pos_tags = [x[1] for x in parse.pos()] if self._use_pos_tags else None
+
+            if self._use_pos_tags and self._has_morphological_features:
+                pos_plus_morph = [x[1] for x in parse.pos()]
+                print(pos_plus_morph)
+                pos_tags, concatenated_features = zip(*[x.strip("#").split("##") for x in pos_plus_morph])
+
+                morphological_features = []
+                for features in concatenated_features:
+
+                    key_value_pairs = [pair for pair in features.split("|") if pair != "_"]
+                    per_word_features = {name: value for (name, value) in [x.split("=")
+                                         for x in key_value_pairs]}
+                    morphological_features.append(per_word_features)
+
+                print(morphological_features)
+
+            elif self._use_pos_tags:
+                pos_tags = [x[1] for x in parse.pos()]
+
+            else:
+                pos_tags = None
+
+            if not self._use_morphological_features:
+                morphological_features = None
+
             yield self.text_to_instance(parse.leaves(), pos_tags, parse)
 
     @overrides

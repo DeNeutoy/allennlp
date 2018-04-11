@@ -154,3 +154,69 @@ class TestPennTreeBankConstituencySpanReader(AllenNlpTestCase):
                              (16, 18): 'VP', (15, 18): 'S-VP', (14, 18): 'SBAR', (12, 18): 'S-VP',
                              (11, 18): 'SBAR', (9, 18): 'VP', (4, 18): 'VP', (3, 18): 'S-VP',
                              (2, 18): 'VP', (1, 18): 'S', (21, 22): 'NP', (23, 23): 'VP', (0, 24): 'S'}
+
+
+
+    def test_read_from_file_french(self):
+
+        ptb_reader = PennTreeBankConstituencySpanDatasetReader(has_morphological_features=True)
+        instances = ptb_reader.read('tests/fixtures/data/spmrl/french.ptb')
+
+        #print(instances[0])
+
+
+        fields = instances[0].fields
+        tokens = [x.text for x in fields["tokens"].tokens]
+        pos_tags = fields["pos_tags"].labels
+        spans = [(x.span_start, x.span_end) for x in fields["spans"].field_list]
+        span_labels = fields["span_labels"].labels
+
+    def test_read_from_file_german(self):
+
+        ptb_reader = PennTreeBankConstituencySpanDatasetReader(has_morphological_features=True)
+        instances = ptb_reader.read('tests/fixtures/data/spmrl/german.ptb')
+
+        #print(instances[0])
+
+
+        fields = instances[0].fields
+        tokens = [x.text for x in fields["tokens"].tokens]
+        pos_tags = fields["pos_tags"].labels
+        spans = [(x.span_start, x.span_end) for x in fields["spans"].field_list]
+        span_labels = fields["span_labels"].labels
+
+    
+    def test_read_from_file_swedish(self):
+
+        ptb_reader = PennTreeBankConstituencySpanDatasetReader(has_morphological_features=True)
+        instances = ptb_reader.read('tests/fixtures/data/spmrl/swedish.ptb')
+
+        fields = instances[0].fields
+        tokens = [x.text for x in fields["tokens"].tokens]
+        pos_tags = fields["pos_tags"].labels
+        spans = [(x.span_start, x.span_end) for x in fields["spans"].field_list]
+        span_labels = fields["span_labels"].labels
+
+
+    def test_read_from_file_hungarian(self):
+
+        ptb_reader = PennTreeBankConstituencySpanDatasetReader(has_morphological_features=True)
+        instances = ptb_reader.read('tests/fixtures/data/spmrl/hungarian.ptb')
+
+        fields = instances[0].fields
+        tokens = [x.text for x in fields["tokens"].tokens]
+        pos_tags = fields["pos_tags"].labels
+        spans = [(x.span_start, x.span_end) for x in fields["spans"].field_list]
+        span_labels = fields["span_labels"].labels
+
+
+    def test_read_from_file_korean(self):
+
+        ptb_reader = PennTreeBankConstituencySpanDatasetReader(has_morphological_features=True)
+        instances = ptb_reader.read('tests/fixtures/data/spmrl/korean.ptb')
+
+        fields = instances[0].fields
+        tokens = [x.text for x in fields["tokens"].tokens]
+        pos_tags = fields["pos_tags"].labels
+        spans = [(x.span_start, x.span_end) for x in fields["spans"].field_list]
+        span_labels = fields["span_labels"].labels
