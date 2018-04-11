@@ -66,5 +66,7 @@ ENV SOURCE_COMMIT $SOURCE_COMMIT
 
 LABEL maintainer="allennlp-contact@allenai.org"
 
+RUN cd scripts/EVALB && make && cd ../..
+
 EXPOSE 8000
 CMD ["/bin/bash"]

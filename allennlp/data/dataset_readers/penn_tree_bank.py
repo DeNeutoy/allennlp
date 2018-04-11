@@ -62,6 +62,14 @@ class PennTreeBankConstituencySpanDatasetReader(DatasetReader):
             # All the trees also contain a root S node.
             if parse.label() == "VROOT":
                 parse = parse[0]
+
+            if parse.label() == "S1":
+                # For some reason, GENIA has lots of nested S constituents at the root of
+                # the tree. Here we strip them out, because they aren't needed and complicate
+                # a bit.
+                while len(parse) == 1 and (parse[0].label() == "S1" or parse[0].label() == "S"):
+                    parse = parse[0]
+
             pos_tags = [x[1] for x in parse.pos()] if self._use_pos_tags else None
             yield self.text_to_instance(parse.leaves(), pos_tags, parse)
 
