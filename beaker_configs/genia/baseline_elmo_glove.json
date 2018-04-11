@@ -76,6 +76,7 @@
       "num_epochs": 150,
       "grad_norm": 5.0,
       "patience": 20,
+      "num_serialized_models_to_keep": 10,
       "validation_metric": "+evalb_f1_measure",
       "cuda_device": 0,
       "optimizer": {
