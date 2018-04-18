@@ -28,17 +28,14 @@
       },
       "initializer": [
         ["tag_projection_layer.*weight", {"type": "xavier_normal"}],
-        ["feedforward_layer.*weight", {"type": "xavier_normal"}],
-        ["encoder._module.weight_ih.*", {"type": "xavier_normal"}],
-        ["encoder._module.weight_hh.*", {"type": "orthogonal"}]
+        ["feedforward_layer.*weight", {"type": "xavier_normal"}]
       ],
       "encoder": {
-        "type": "lstm",
+        "type": "stacked_bidirectional_lstm",
         "input_size": 1074,
         "hidden_size": 250,
         "num_layers": 2,
-        "bidirectional": true,
-        "dropout": 0.2
+        "recurrent_dropout_probability": 0.2
       },
       "feedforward": {
         "input_dim": 500,
@@ -66,7 +63,7 @@
       },
       "num_epochs": 150,
       "grad_norm": 5.0,
-      "patience": 20,
+      "patience": 30,
       "num_serialized_models_to_keep": 10,
       "validation_metric": "+evalb_f1_measure",
       "cuda_device": 0,
