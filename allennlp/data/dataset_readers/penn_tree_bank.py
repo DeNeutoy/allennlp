@@ -29,6 +29,11 @@ class PennTreeBankConstituencySpanDatasetReader(DatasetReader):
     it enumerates all possible spans in the sentence and returns them, along with gold
     labels for the relevant spans present in a gold tree, if provided.
 
+    This dataset reader is also suitable for reading any data which conforms to the
+    PTB specification of one bracket delimited parse tree per line. Additionally,
+    it has the ability to read morphological tags if present, such as in the
+    SPMRL shared task data.
+
     Parameters
     ----------
     token_indexers : ``Dict[str, TokenIndexer]``, optional (default=``{"tokens": SingleIdTokenIndexer()}``)
@@ -74,14 +79,20 @@ class PennTreeBankConstituencySpanDatasetReader(DatasetReader):
             if self._use_pos_tags and self._has_morphological_features:
                 pos_plus_morph = [x[1] for x in parse.pos()]
                 print(pos_plus_morph)
-                pos_tags, concatenated_features = zip(*[x.strip("#").split("##") for x in pos_plus_morph])
+                # This is a bit of a gross hack - in the Hungarian SPMRL data,
+                # PUNC doesn't have any morphological tags.
+                split_tags = [x.strip("#").split("##") if x != "PUNC" else ["PUNC", "_"]
+                              for x in pos_plus_morph] 
+                pos_tags, concatenated_features = zip(*split_tags)
 
                 morphological_features = []
                 for features in concatenated_features:
-
-                    key_value_pairs = [pair for pair in features.split("|") if pair != "_"]
+                    # The features are all concatenated together, delimited by a "|".
+                    # We filter out pairs which equal "_" because these do not
+                    # represent a value.
+                    tag_types_with_values = [pair for pair in features.split("|") if pair != "_"]
                     per_word_features = {name: value for (name, value) in [x.split("=")
-                                         for x in key_value_pairs]}
+                                         for x in tag_types_with_values]}
                     morphological_features.append(per_word_features)
 
                 print(morphological_features)
