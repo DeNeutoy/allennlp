@@ -1,4 +1,7 @@
 {
+  "random_seed": ${SEED},
+  "pytorch_seed": ${SEED},
+  "numpy_seed": ${SEED},
     "dataset_reader":{
         "type":"ptb_trees",
         "use_pos_tags": true
@@ -66,5 +69,6 @@
         "lr": 1.0,
         "rho": 0.95
       }
-    }
+    },
+    "evaluate_on_test": true
   }

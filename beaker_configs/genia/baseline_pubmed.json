@@ -4,15 +4,7 @@
   "numpy_seed": ${SEED},
     "dataset_reader":{
         "type":"ptb_trees",
-        "use_pos_tags": true,
-        "token_indexers": {
-          "elmo": {
-            "type": "elmo_characters"
-          },
-          "tokens": {
-            "type": "single_id"
-          }
-        }
+        "use_pos_tags": true
     },
     "train_data_path": "/genia-ptb/train.trees",
     "validation_data_path": "/genia-ptb/dev.trees",
@@ -25,14 +17,7 @@
             "pretrained_file": "/glove",
             "embedding_dim": 200,
             "trainable": true
-          },
-        "elmo": {
-          "type": "elmo_token_embedder",
-          "dropout": 0.2,
-          "options_file": ${ELMO_OPTIONS},
-          "weight_file": ${ELMO_WEIGHTS},
-          "do_layer_norm": false
-        }
+          }
       },
       "pos_tag_embedding":{
             "embedding_dim": 50,
@@ -44,7 +29,7 @@
       ],
       "encoder": {
         "type": "stacked_bidirectional_lstm",
-        "input_size": 1274,
+        "input_size": 250,
         "hidden_size": 250,
         "num_layers": 2,
         "recurrent_dropout_probability": 0.2
