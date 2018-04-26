@@ -1,10 +1,10 @@
 {
   "random_seed": ${SEED},
-  "pytorch_seed": ${SEED},
-  "numpy_seed": ${SEED},
+  "pytorch_seed": ${PYTORCH_SEED},
+  "numpy_seed": ${NUMPY_SEED},
     "dataset_reader":{
         "type":"ptb_trees",
-        "use_pos_tags": true
+        "use_pos_tags": false
     },
     "train_data_path": "/genia-ptb/train.trees",
     "validation_data_path": "/genia-ptb/dev.trees",
@@ -19,17 +19,13 @@
             "trainable": true
           }
       },
-      "pos_tag_embedding":{
-            "embedding_dim": 50,
-            "vocab_namespace": "pos"
-      },
       "initializer": [
         ["tag_projection_layer.*weight", {"type": "xavier_normal"}],
         ["feedforward_layer.*weight", {"type": "xavier_normal"}]
       ],
       "encoder": {
         "type": "stacked_bidirectional_lstm",
-        "input_size": 350,
+        "input_size": 300,
         "hidden_size": 250,
         "num_layers": 2,
         "recurrent_dropout_probability": 0.2
