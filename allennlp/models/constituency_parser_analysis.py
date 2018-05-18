@@ -169,12 +169,12 @@ class SpanConstituencyParserAnalysis(Model):
         loss : ``torch.FloatTensor``, optional
             A scalar loss to be optimised.
         """
-        all_elmo_layers = [x.squeeze(1) for x in lm_embeddings.split(1, dim=1)]
 
         if self._layer_index == "mixed":
+            all_elmo_layers = [x.squeeze(1) for x in lm_embeddings.split(1, dim=1)]
             elmo_representations = self.scalar_mix(all_elmo_layers)
         else:
-            elmo_representations = all_elmo_layers[self._layer_index]
+            elmo_representations = lm_embeddings
 
         mask = get_text_field_mask(tokens)
         # Looking at the span start index is enough to know if

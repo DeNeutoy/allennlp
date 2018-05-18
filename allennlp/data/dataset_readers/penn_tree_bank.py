@@ -23,7 +23,7 @@ from allennlp.common.checks import ConfigurationError
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 
-def load_language_model_embeddings(embedding_file: str):
+def load_language_model_embeddings(embedding_file: str, layer_index:int):
     """
     Load the language model embeddings from the file. The file is keyed by sentence_id.
     Each sentence contains one h5py dataset of shape (3, n_tokens, 1024),
@@ -39,8 +39,11 @@ def load_language_model_embeddings(embedding_file: str):
     language_model_embeddings = {}
     with h5py.File(embedding_file, 'r') as hdf5_file:
         for key in hdf5_file.keys():
-
-            language_model_embeddings[int(key)] = hdf5_file[key][...].astype("float32")
+            
+            if layer_index == "mixed":
+                language_model_embeddings[int(key)] = hdf5_file[key][...].astype("float32")
+            else:
+                language_model_embeddings[int(key)] = hdf5_file[key][layer_index].astype("float32")
 
     return language_model_embeddings
 
@@ -68,8 +71,10 @@ class PennTreeBankConstituencySpanDatasetReader(DatasetReader):
     def __init__(self,
                  token_indexers: Dict[str, TokenIndexer] = None,
                  use_pos_tags: bool = True,
+                 layer_index: int,
                  lazy: bool = False) -> None:
         super().__init__(lazy=lazy)
+        self._layer_index = layer_index
         self._token_indexers = token_indexers or {'tokens': SingleIdTokenIndexer()}
         self._use_pos_tags = use_pos_tags
 
@@ -80,7 +85,7 @@ class PennTreeBankConstituencySpanDatasetReader(DatasetReader):
         directory, filename = os.path.split(file_path)
         embedding_name = ".".join(filename.split(".")[:-1] + ["embeddings.hdf5"])
 
-        embedding_dict = load_language_model_embeddings(os.path.join(directory, embedding_name))
+        embedding_dict = load_language_model_embeddings(os.path.join(directory, embedding_name), self._layer_index)
         logger.info("Reading instances from lines in file at: %s", file_path)
         for i, parse in enumerate(BracketParseCorpusReader(root=directory, fileids=[filename]).parsed_sents()):
 
@@ -253,7 +258,9 @@ class PennTreeBankConstituencySpanDatasetReader(DatasetReader):
         token_indexers = TokenIndexer.dict_from_params(params.pop('token_indexers', {}))
         use_pos_tags = params.pop('use_pos_tags', True)
         lazy = params.pop('lazy', False)
+        layer_index = params.pop('layer_index')
         params.assert_empty(cls.__name__)
         return PennTreeBankConstituencySpanDatasetReader(token_indexers=token_indexers,
+                                                         layer_index=layer_index,
                                                          use_pos_tags=use_pos_tags,
                                                          lazy=lazy)
