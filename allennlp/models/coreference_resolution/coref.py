@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
+from torch.nn.modules import Bilinear
 from overrides import overrides
 
 from allennlp.common import Params
@@ -199,6 +200,7 @@ class CoreferenceResolver(Model):
                                               flat_top_span_indices)
 
         # Compute indices for antecedent spans to consider.
+        # TODO(Mark): This only gets used after the coarse pruning.
         max_antecedents = min(self._max_antecedents, num_spans_to_keep)
 
         # Now that we have our variables in terms of num_spans_to_keep, we need to
@@ -216,19 +218,29 @@ class CoreferenceResolver(Model):
         #  we can use to make coreference decisions between valid span pairs.
 
         # Shapes:
-        # (num_spans_to_keep, max_antecedents),
-        # (1, max_antecedents),
-        # (1, num_spans_to_keep, max_antecedents)
+        # (num_spans_to_keep, num_spans_to_keep),
+        # (1, num_spans_to_keep),
+        # (1, num_spans_to_keep, num_spans_to_keep)
         valid_antecedent_indices, valid_antecedent_offsets, valid_antecedent_log_mask = \
-            self._generate_valid_antecedents(num_spans_to_keep, max_antecedents, util.get_device_of(text_mask))
+            self._generate_valid_antecedents(num_spans_to_keep, num_spans_to_keep, util.get_device_of(text_mask))
         # Select tensors relating to the antecedent spans.
-        # Shape: (batch_size, num_spans_to_keep, max_antecedents, embedding_size)
-        candidate_antecedent_embeddings = util.flattened_index_select(top_span_embeddings,
+        # Shape: (batch_size, num_spans_to_keep, num_spans_to_keep, embedding_size)
+        coarse_candidate_antecedent_embeddings = util.flattened_index_select(top_span_embeddings,
                                                                       valid_antecedent_indices)
 
-        # Shape: (batch_size, num_spans_to_keep, max_antecedents)
-        candidate_antecedent_mention_scores = util.flattened_index_select(top_span_mention_scores,
+        # Shape: (batch_size, num_spans_to_keep, num_spans_to_keep)
+        coarse_candidate_antecedent_mention_scores = util.flattened_index_select(top_span_mention_scores,
                                                                           valid_antecedent_indices).squeeze(-1)
+
+
+        # 1) Compute coarse coreference pairwise scores:
+        self._compute_coarse_anteceedent_pruning_scores(top_span_embeddings,
+                                                        coarse_candidate_antecedent_embeddings,
+                                                        top_span_mention_scores,
+                                                        coarse_candidate_antecedent_mention_scores)
+
+        # Prune again based on these new scores.
+
         # Compute antecedent scores.
         # Shape: (batch_size, num_spans_to_keep, max_antecedents, embedding_size)
         span_pair_embeddings = self._compute_span_pair_embeddings(top_span_embeddings,
@@ -532,6 +544,20 @@ class CoreferenceResolver(Model):
         # Shape: (batch_size, num_spans_to_keep, max_antecedents + 1)
         pairwise_labels_with_dummy_label = torch.cat([dummy_labels, pairwise_labels], -1)
         return pairwise_labels_with_dummy_label
+
+
+    def _compute_coarse_anteceedent_pruning_scores(self, 
+                                                   top_span_embeddings,
+                                                   candidate_antecedent_embeddings,
+                                                   top_span_mention_scores,
+                                                   candidate_antecedent_mention_scores):
+
+        # top_span_embeddings: shape (batch_size, num_spans_to_keep, embedding_size)
+        # candidate_antecedent_embeddings: shape (batch_size, num_spans_to_keep, max_anteceedents, embedding_size)
+        # top_span_embeddings: shape (batch_size, num_spans_to_keep, embedding_size)
+        # top_span_embeddings: shape (batch_size, num_spans_to_keep, embedding_size)
+
+        scores = 
 
     def _compute_coreference_scores(self,
                                     pairwise_embeddings: torch.FloatTensor,
