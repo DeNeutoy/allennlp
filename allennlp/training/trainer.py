@@ -176,7 +176,8 @@ class Trainer:
                  grad_clipping: Optional[float] = None,
                  learning_rate_scheduler: Optional[LearningRateScheduler] = None,
                  summary_interval: int = 100,
-                 histogram_interval: int = None) -> None:
+                 histogram_interval: int = None,
+                 is_distributed_master: bool = False) -> None:
         """
         Parameters
         ----------
@@ -320,7 +321,8 @@ class Trainer:
 
         self._last_log = 0.0  # time of last logging
 
-        if serialization_dir is not None:
+        self._is_distributed_master = is_distributed_master
+        if serialization_dir is not None and is_distributed_master:
             train_log = SummaryWriter(os.path.join(serialization_dir, "log", "train"))
             validation_log = SummaryWriter(os.path.join(serialization_dir, "log", "validation"))
             self._tensorboard = TensorboardWriter(train_log, validation_log)
@@ -413,7 +415,9 @@ class Trainer:
         if self._multiple_gpu:
             output_dict = self._data_parallel(batch)
         else:
+            print("before model forward.")
             output_dict = self._model(**batch)
+            print("after model forward.")
 
         try:
             loss = output_dict["loss"]
@@ -446,6 +450,7 @@ class Trainer:
         for gpu, memory in gpu_memory_mb().items():
             logger.info(f"GPU {gpu} memory usage MB: {memory}")
 
+        print("beginning an epoch.")
         train_loss = 0.0
         # Set the model to "train" mode.
         self._model.train()
@@ -476,15 +481,20 @@ class Trainer:
             self._log_histograms_this_batch = self._histogram_interval is not None and (
                     batch_num_total % self._histogram_interval == 0)
 
+            print("running a batch")
             self._optimizer.zero_grad()
 
             loss = self._batch_loss(batch, for_training=True)
+            print("before backward")
             loss.backward()
+            print("after backward")
 
-            train_loss += loss.item()
+            #train_loss += loss.item()
 
+            print("after train_loss")
             batch_grad_norm = self._rescale_gradients()
 
+            print("after grad rescaling")
             # This does nothing if batch_num_total is None or you are using an
             # LRScheduler which doesn't update per batch.
             if self._learning_rate_scheduler:
@@ -496,7 +506,9 @@ class Trainer:
                 # and copy them to CPU so large models won't go OOM on the GPU.
                 param_updates = {name: param.detach().cpu().clone()
                                  for name, param in self._model.named_parameters()}
+                print("before optimiser step")
                 self._optimizer.step()
+                print("after optimiser step")
                 for name, param in self._model.named_parameters():
                     param_updates[name].sub_(param.detach().cpu())
                     update_norm = torch.norm(param_updates[name].view(-1, ))
@@ -505,10 +517,13 @@ class Trainer:
                                                        update_norm / (param_norm + 1e-7),
                                                        batch_num_total)
             else:
+                print("before optimiser step")
                 self._optimizer.step()
+                print("after optimiser step")
 
             # Update the description with the latest metrics
             metrics = self._get_metrics(train_loss, batches_this_epoch)
+            print("after getting metrics")
             description = self._description_from_metrics(metrics)
 
             train_generator_tqdm.set_description(description, refresh=False)
@@ -591,6 +606,8 @@ class Trainer:
         """
         Send histograms of parameters to tensorboard.
         """
+        if not self._is_distributed_master:
+            return
         for name, param in self._model.named_parameters():
             if name in histogram_parameters:
                 self._tensorboard.add_train_histogram("parameter_histogram/" + name,
@@ -604,6 +621,8 @@ class Trainer:
         """
         Sends all of the train metrics (and validation metrics, if provided) to tensorboard.
         """
+        if not self._is_distributed_master:
+            return
         metric_names = set(train_metrics.keys())
         if val_metrics is not None:
             metric_names.update(val_metrics.keys())
@@ -623,6 +642,8 @@ class Trainer:
         """
         Logs all of the train metrics (and validation metrics, if provided) to the console.
         """
+        if not self._is_distributed_master:
+            return
         val_metrics = val_metrics or {}
         dual_message_template = "%s |  %8.3f  |  %8.3f"
         no_val_message_template = "%s |  %8.3f  |  %8s"
@@ -712,7 +733,7 @@ class Trainer:
         for epoch in range(epoch_counter, self._num_epochs):
             epoch_start_time = time.time()
             train_metrics = self._train_epoch(epoch)
-
+            print("after train epoch")
             if self._validation_data is not None:
                 with torch.no_grad():
                     # We have a validation set, so compute all the metrics on it.
@@ -742,6 +763,7 @@ class Trainer:
             self._metrics_to_tensorboard(epoch, train_metrics, val_metrics=val_metrics)
             self._metrics_to_console(train_metrics, val_metrics)
 
+            print("after tensorboard metrics")
             if self._learning_rate_scheduler:
                 # The LRScheduler API is agnostic to whether your schedule requires a validation metric -
                 # if it doesn't, the validation metric passed here is ignored.
@@ -818,6 +840,8 @@ class Trainer:
             be copied to a "best.th" file. The value of this flag should
             be based on some validation metric computed by your model.
         """
+        if not self._is_distributed_master:
+            return
         if self._serialization_dir is not None:
             model_path = os.path.join(self._serialization_dir, "model_state_epoch_{}.th".format(epoch))
             model_state = self._model.state_dict()
