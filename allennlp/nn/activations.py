@@ -23,7 +23,7 @@ The available activation functions are
 * `"softsign" <http://pytorch.org/docs/master/nn.html#torch.nn.Softsign>`_
 * `"tanhshrink" <http://pytorch.org/docs/master/nn.html#torch.nn.Tanhshrink>`_
 """
-
+import math
 import torch
 
 from allennlp.common import Registrable
@@ -48,10 +48,14 @@ class Activation(Registrable):
         """
         raise NotImplementedError
 
+def gelu(x: torch.Tensor) -> torch.Tensor:
+        return 0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
+
 # There are no classes to decorate, so we hack these into Registrable._registry
 # pylint: disable=protected-access
 Registrable._registry[Activation] = {  # type: ignore
         "linear": lambda: lambda x: x,
+        "gelu": gelu,
         "relu": torch.nn.ReLU,
         "relu6": torch.nn.ReLU6,
         "elu": torch.nn.ELU,
