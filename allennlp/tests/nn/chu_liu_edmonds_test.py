@@ -6,7 +6,7 @@ import torch
 
 from allennlp.common.testing import AllenNlpTestCase
 from allennlp.common.checks import ConfigurationError
-from allennlp.nn.chu_liu_edmonds import _find_cycle, decode_mst
+from allennlp.nn.chu_liu_edmonds import _find_cycle, decode_mst, get_connected_components, num_connected_components
 
 class ChuLiuEdmondsTest(AllenNlpTestCase):
     def test_find_cycle(self):
@@ -40,6 +40,26 @@ class ChuLiuEdmondsTest(AllenNlpTestCase):
         has_cycle, cycle = _find_cycle(parents, 5, current_nodes)
         assert has_cycle
         assert cycle == [3, 4]
+
+    def test_get_connected_components(self):
+        graph = {
+                0: {1},
+                1: set()
+        }
+
+        components = get_connected_components(graph)
+        assert components == [[0, 1]]
+        graph = {
+                0: {1},
+                1: set(),
+                2: {3},
+                3: set(),
+                4: {3}
+        }
+
+        components = get_connected_components(graph)
+        assert components == [[0, 1], [2, 3, 4]]
+
 
     def test_mst(self):
         # First, test some random cases as sanity checks.

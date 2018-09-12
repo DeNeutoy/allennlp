@@ -17,8 +17,8 @@ from allennlp.models.model import Model
 from allennlp.nn import InitializerApplicator, RegularizerApplicator, Activation
 from allennlp.nn.util import get_text_field_mask, get_range_vector
 from allennlp.nn.util import get_device_of, masked_log_softmax, get_lengths_from_binary_sequence_mask
-from allennlp.nn.chu_liu_edmonds import decode_mst
-from allennlp.training.metrics import AttachmentScores
+from allennlp.nn.chu_liu_edmonds import decode_mst, _find_cycle, num_connected_components
+from allennlp.training.metrics import AttachmentScores, Average, Count
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -142,6 +142,12 @@ class BiaffineDependencyParser(Model):
                     "Ignoring words with these POS tags for evaluation.")
 
         self._attachment_scores = AttachmentScores()
+        self._greedy_attachment_scores = AttachmentScores()
+        self._mst_as_gold_attachment_scores = AttachmentScores()
+        self._has_cycle = Average()
+        self._arc_loss_difference = Average()
+        self._tag_loss_difference = Average()
+        self._connected_components = Count("connnected_components")
         initializer(self)
 
     @overrides
@@ -234,16 +240,15 @@ class BiaffineDependencyParser(Model):
         minus_mask = (1 - float_mask) * minus_inf
         attended_arcs = attended_arcs + minus_mask.unsqueeze(2) + minus_mask.unsqueeze(1)
 
-        if self.training or not self.use_mst_decoding_for_validation:
-            predicted_heads, predicted_head_tags = self._greedy_decode(head_tag_representation,
-                                                                       child_tag_representation,
-                                                                       attended_arcs,
-                                                                       mask)
-        else:
-            predicted_heads, predicted_head_tags = self._mst_decode(head_tag_representation,
-                                                                    child_tag_representation,
-                                                                    attended_arcs,
-                                                                    mask)
+        predicted_heads, predicted_head_tags = self._greedy_decode(head_tag_representation,
+                                                                   child_tag_representation,
+                                                                   attended_arcs,
+                                                                   mask)
+        mst_predicted_heads, mst_predicted_head_tags = self._mst_decode(head_tag_representation,
+                                                                        child_tag_representation,
+                                                                        attended_arcs,
+                                                                        mask)
+        loss = None
         if head_indices is not None and head_tags is not None:
 
             arc_nll, tag_nll = self._construct_loss(head_tag_representation=head_tag_representation,
@@ -258,19 +263,68 @@ class BiaffineDependencyParser(Model):
             # We calculate attatchment scores for the whole sentence
             # but excluding the symbolic ROOT token at the start,
             # which is why we start from the second element in the sequence.
-            self._attachment_scores(predicted_heads[:, 1:],
-                                    predicted_head_tags[:, 1:],
+            self._attachment_scores(mst_predicted_heads[:, 1:],
+                                    mst_predicted_head_tags[:, 1:],
                                     head_indices[:, 1:],
                                     head_tags[:, 1:],
                                     evaluation_mask)
-        else:
-            arc_nll, tag_nll = self._construct_loss(head_tag_representation=head_tag_representation,
-                                                    child_tag_representation=child_tag_representation,
-                                                    attended_arcs=attended_arcs,
-                                                    head_indices=predicted_heads.long(),
-                                                    head_tags=predicted_head_tags.long(),
-                                                    mask=mask)
-            loss = arc_nll + tag_nll
+
+            self._greedy_attachment_scores(predicted_heads[:, 1:],
+                                           predicted_head_tags[:, 1:],
+                                           head_indices[:, 1:],
+                                           head_tags[:, 1:],
+                                           evaluation_mask)
+
+
+
+        evaluation_mask = self._get_mask_for_eval(mask[:, 1:], pos_tags)
+        # We calculate attatchment scores for the whole sentence
+        # but excluding the symbolic ROOT token at the start,
+        # which is why we start from the second element in the sequence.
+        self._mst_as_gold_attachment_scores(predicted_heads[:, 1:],
+                                            predicted_head_tags[:, 1:],
+                                            mst_predicted_heads[:, 1:],
+                                            mst_predicted_head_tags[:, 1:],
+                                            evaluation_mask)
+
+        lengths = get_lengths_from_binary_sequence_mask(mask).cpu().numpy()
+        for instance_heads, length in zip(predicted_heads.cpu().numpy(), lengths):
+            instance_heads = list(instance_heads[:length])
+            current_nodes = [True for _ in instance_heads]
+            has_cycle, _ = _find_cycle(instance_heads, length, current_nodes)
+            current_nodes = [True for _ in instance_heads]
+            self._has_cycle(1 if has_cycle else 0)
+            num_components = num_connected_components(instance_heads)
+            self._connected_components(num_components)
+
+        greedy_arc_nll, greedy_tag_nll = self._construct_loss(head_tag_representation=head_tag_representation,
+                                                              child_tag_representation=child_tag_representation,
+                                                              attended_arcs=attended_arcs,
+                                                              head_indices=predicted_heads.long(),
+                                                              head_tags=predicted_head_tags.long(),
+                                                              mask=mask)
+
+        mst_arc_nll, mst_tag_nll = self._construct_loss(head_tag_representation=head_tag_representation,
+                                                        child_tag_representation=child_tag_representation,
+                                                        attended_arcs=attended_arcs,
+                                                        head_indices=mst_predicted_heads.long(),
+                                                        head_tags=mst_predicted_head_tags.long(),
+                                                        mask=mask)
+
+
+        self._arc_loss_difference(mst_arc_nll - greedy_arc_nll)
+        self._tag_loss_difference(mst_tag_nll - greedy_tag_nll)
+
+        if loss is None:
+
+            if self.use_mst_decoding_for_validation:
+                loss = mst_arc_nll + mst_tag_nll
+                arc_nll = mst_arc_nll
+                tag_nll = mst_tag_nll
+            else:
+                loss = greedy_arc_nll + greedy_tag_nll
+                arc_nll = greedy_arc_nll
+                tag_nll = greedy_tag_nll
 
         output_dict = {
                 "heads": predicted_heads,
@@ -604,4 +658,16 @@ class BiaffineDependencyParser(Model):
 
     @overrides
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
-        return self._attachment_scores.get_metric(reset)
+        normal = self._attachment_scores.get_metric(reset)
+        mst_as_gold = self._mst_as_gold_attachment_scores.get_metric(reset)
+        greedy = self._greedy_attachment_scores.get_metric(reset)
+        has_cycle = self._has_cycle.get_metric(reset)
+
+        normal["has_cycle"] = has_cycle
+        normal["mst_minus_greedy_arc_loss"] = self._arc_loss_difference.get_metric(reset)
+        normal["mst_minus_greedy_tag_loss"] = self._tag_loss_difference.get_metric(reset)
+
+        normal.update({f"mst_as_gold_{k}": v for k, v in mst_as_gold.items()})
+        normal.update({f"greedy_{k}": v for k, v in greedy.items()})
+        normal.update(self._connected_components.get_metric(reset))
+        return normal
