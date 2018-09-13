@@ -55,7 +55,7 @@ def gelu(x: torch.Tensor) -> torch.Tensor:
 # pylint: disable=protected-access
 Registrable._registry[Activation] = {  # type: ignore
         "linear": lambda: lambda x: x,
-        "gelu": gelu,
+        "gelu": lambda: lambda x: gelu(x),
         "relu": torch.nn.ReLU,
         "relu6": torch.nn.ReLU6,
         "elu": torch.nn.ELU,

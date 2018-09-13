@@ -8,6 +8,7 @@ import torch
 from allennlp.common import Params
 from allennlp.common.checks import ConfigurationError
 from allennlp.nn import Activation
+from allennlp.modules.input_variational_dropout import InputVariationalDropout
 
 
 class FeedForward(torch.nn.Module):
@@ -38,7 +39,8 @@ class FeedForward(torch.nn.Module):
                  num_layers: int,
                  hidden_dims: Union[int, Sequence[int]],
                  activations: Union[Activation, Sequence[Activation]],
-                 dropout: Union[float, Sequence[float]] = 0.0) -> None:
+                 dropout: Union[float, Sequence[float]] = 0.0,
+                 use_variational_dropout: bool = False) -> None:
 
         super(FeedForward, self).__init__()
         if not isinstance(hidden_dims, list):
@@ -62,7 +64,9 @@ class FeedForward(torch.nn.Module):
         for layer_input_dim, layer_output_dim in zip(input_dims, hidden_dims):
             linear_layers.append(torch.nn.Linear(layer_input_dim, layer_output_dim))
         self._linear_layers = torch.nn.ModuleList(linear_layers)
-        dropout_layers = [torch.nn.Dropout(p=value) for value in dropout]
+
+        dropout_func = torch.nn.Dropout if not use_variational_dropout else InputVariationalDropout
+        dropout_layers = [dropout_func(p=value) for value in dropout]
         self._dropout = torch.nn.ModuleList(dropout_layers)
         self._output_dim = hidden_dims[-1]
         self.input_dim = input_dim

@@ -6,6 +6,7 @@ from torch.nn import Dropout
 
 from allennlp.modules.feedforward import FeedForward
 from allennlp.modules.layer_norm import LayerNorm
+from allennlp.modules.input_variational_dropout import InputVariationalDropout
 from allennlp.modules.seq2seq_encoders.multi_head_self_attention import MultiHeadSelfAttention
 from allennlp.modules.seq2seq_encoders.seq2seq_encoder import Seq2SeqEncoder
 from allennlp.nn.activations import Activation
@@ -68,7 +69,10 @@ class StackedSelfAttentionEncoder(Seq2SeqEncoder):
                  use_positional_encoding: bool = True,
                  dropout_prob: float = 0.1,
                  residual_dropout_prob: float = 0.2,
-                 attention_dropout_prob: float = 0.1) -> None:
+                 attention_dropout_prob: float = 0.1,
+                 use_variational_dropout: bool = False,
+                 activation: str = "relu",
+                 layer_norm_average: float = None) -> None:
         super(StackedSelfAttentionEncoder, self).__init__()
 
         self._use_positional_encoding = use_positional_encoding
@@ -80,16 +84,17 @@ class StackedSelfAttentionEncoder(Seq2SeqEncoder):
         feedfoward_input_dim = input_dim
         for i in range(num_layers):
             feedfoward = FeedForward(feedfoward_input_dim,
-                                     activations=[Activation.by_name('relu')(),
+                                     activations=[Activation.by_name(activation)(),
                                                   Activation.by_name('linear')()],
                                      hidden_dims=[feedforward_hidden_dim, hidden_dim],
                                      num_layers=2,
-                                     dropout=dropout_prob)
+                                     dropout=dropout_prob,
+                                     use_variational_dropout=use_variational_dropout)
 
             self.add_module(f"feedforward_{i}", feedfoward)
             self._feedfoward_layers.append(feedfoward)
 
-            feedforward_layer_norm = LayerNorm(feedfoward.get_output_dim())
+            feedforward_layer_norm = LayerNorm(feedfoward.get_output_dim(), moving_average=layer_norm_average)
             self.add_module(f"feedforward_layer_norm_{i}", feedforward_layer_norm)
             self._feed_forward_layer_norm_layers.append(feedforward_layer_norm)
 
@@ -101,13 +106,15 @@ class StackedSelfAttentionEncoder(Seq2SeqEncoder):
             self.add_module(f"self_attention_{i}", self_attention)
             self._attention_layers.append(self_attention)
 
-            layer_norm = LayerNorm(self_attention.get_output_dim())
+            layer_norm = LayerNorm(self_attention.get_output_dim(), moving_average=layer_norm_average)
             self.add_module(f"layer_norm_{i}", layer_norm)
             self._layer_norm_layers.append(layer_norm)
 
             feedfoward_input_dim = hidden_dim
-
-        self.dropout = Dropout(residual_dropout_prob)
+        if use_variational_dropout:
+            self.dropout = InputVariationalDropout(residual_dropout_prob)
+        else:
+            self.dropout = Dropout(residual_dropout_prob)
         self._input_dim = input_dim
         self._output_dim = self._attention_layers[-1].get_output_dim()
 
