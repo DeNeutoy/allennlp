@@ -1,4 +1,3 @@
-from collections import defaultdict
 from typing import List, Set, Tuple, Dict
 import numpy
 
@@ -283,28 +282,3 @@ def _find_cycle(parents: List[int],
             break
 
     return has_cycle, list(cycle)
-
-
-def get_connected_components(neighbours):
-    seen = set()
-    def component(node):
-        nodes = set([node])
-        while nodes:
-            node = nodes.pop()
-            seen.add(node)
-            nodes |= neighbours[node] - seen
-            yield node
-
-    for node in neighbours:
-        if node not in seen:
-            yield component(node)
-
-def num_connected_components(parents: List[int]):
-    neighbours = {i: set() for i in range(len(parents))}
-    for i, p in enumerate(parents):
-        if i == p:
-            continue
-        neighbours[p].add(i)
-
-    cc = [list(x) for x in get_connected_components(neighbours)]
-    return len(cc)

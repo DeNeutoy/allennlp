@@ -41,26 +41,6 @@ class ChuLiuEdmondsTest(AllenNlpTestCase):
         assert has_cycle
         assert cycle == [3, 4]
 
-    def test_get_connected_components(self):
-        graph = {
-                0: {1},
-                1: set()
-        }
-
-        components = get_connected_components(graph)
-        assert components == [[0, 1]]
-        graph = {
-                0: {1},
-                1: set(),
-                2: {3},
-                3: set(),
-                4: {3}
-        }
-
-        components = get_connected_components(graph)
-        assert components == [[0, 1], [2, 3, 4]]
-
-
     def test_mst(self):
         # First, test some random cases as sanity checks.
         # No label case

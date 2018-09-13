@@ -17,7 +17,7 @@ from allennlp.models.model import Model
 from allennlp.nn import InitializerApplicator, RegularizerApplicator, Activation
 from allennlp.nn.util import get_text_field_mask, get_range_vector
 from allennlp.nn.util import get_device_of, masked_log_softmax, get_lengths_from_binary_sequence_mask
-from allennlp.nn.chu_liu_edmonds import decode_mst, _find_cycle, num_connected_components
+from allennlp.nn.chu_liu_edmonds import decode_mst, _find_cycle
 from allennlp.training.metrics import AttachmentScores, Average, Count
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
@@ -147,7 +147,7 @@ class BiaffineDependencyParser(Model):
         self._has_cycle = Average()
         self._arc_loss_difference = Average()
         self._tag_loss_difference = Average()
-        self._connected_components = Count("connnected_components")
+        self._head_count = Count("head_count")
         initializer(self)
 
     @overrides
@@ -294,8 +294,8 @@ class BiaffineDependencyParser(Model):
             has_cycle, _ = _find_cycle(instance_heads, length, current_nodes)
             current_nodes = [True for _ in instance_heads]
             self._has_cycle(1 if has_cycle else 0)
-            num_components = num_connected_components(instance_heads)
-            self._connected_components(num_components)
+            heads = sum([x == 0 for x in instance_heads[1:]])
+            self._head_count(heads)
 
         greedy_arc_nll, greedy_tag_nll = self._construct_loss(head_tag_representation=head_tag_representation,
                                                               child_tag_representation=child_tag_representation,
@@ -312,8 +312,8 @@ class BiaffineDependencyParser(Model):
                                                         mask=mask)
 
 
-        self._arc_loss_difference(mst_arc_nll - greedy_arc_nll)
-        self._tag_loss_difference(mst_tag_nll - greedy_tag_nll)
+        self._arc_loss_difference(float(mst_arc_nll.cpu().item() - greedy_arc_nll.cpu().item()))
+        self._tag_loss_difference(float(mst_tag_nll.cpu().item() - greedy_tag_nll.cpu().item()))
 
         if loss is None:
 
@@ -669,5 +669,5 @@ class BiaffineDependencyParser(Model):
 
         normal.update({f"mst_as_gold_{k}": v for k, v in mst_as_gold.items()})
         normal.update({f"greedy_{k}": v for k, v in greedy.items()})
-        normal.update(self._connected_components.get_metric(reset))
+        normal.update(self._head_count.get_metric(reset))
         return normal
