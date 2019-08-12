@@ -11,8 +11,8 @@
         "sorting_keys": [["tokens", "num_tokens"]]
     },
 
-    "train_data_path": std.extVar("SRL_TRAIN_DATA_PATH"),
-    "validation_data_path": std.extVar("SRL_VALIDATION_DATA_PATH"),
+    "train_data_path": "/net/nfs.corp/allennlp/data/ontonotes/conll-formatted-ontonotes-5.0/data/train/",
+    "validation_data_path": "/net/nfs.corp/allennlp/data/ontonotes/conll-formatted-ontonotes-5.0/data/development/",
 
     "model": {
         "type": "srl_bert",

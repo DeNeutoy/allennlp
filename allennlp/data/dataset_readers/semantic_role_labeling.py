@@ -15,6 +15,83 @@ from allennlp.data.dataset_readers.dataset_utils import Ontonotes, OntonotesSent
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
+SENTS_TO_DROP = {
+        "ARGM-DSP", # direct speech doesn't really affect the frame very often and there are only two examples
+}
+
+ARGS_TO_DROP = {
+
+        "ARGM-REC", # low precision, 122,33
+        "ARGM-DIS", # large number of labels, not related to verb frames that much.
+
+        "C-ARG3",
+        "C-ARG4",
+        "C-ARGM-ADJ",
+        "C-ARGM-ADV",
+        "C-ARGM-CAU",
+        "C-ARGM-COM",
+        "C-ARGM-DIR",
+        "C-ARGM-DIS",
+        "C-ARGM-DSP",
+        "C-ARGM-EXT",
+        "C-ARGM-LOC",
+        "C-ARGM-MNR",
+        "C-ARGM-MOD",
+        "C-ARGM-NEG",
+        "C-ARGM-PRP",
+        "C-ARGM-TMP",
+        # Only continued args we keep are ARG0, ARG1, ARG2, ARG3
+        "R-ARG5",
+        "R-ARGM-COM",
+        "R-ARGM-GOL",
+        "R-ARGM-MOD",
+        "R-ARGM-PNC",
+        "R-ARGM-PRD",
+        "R-ARGM-DIR",
+        "R-ARGM-PRP",
+        "R-ARG4",
+        "R-ARGM-EXT",
+        "R-ARGM-ADV",
+        # Only allow references to ARG0, ARG1, ARG2, ARG3, CAU, MNR, TMP, LOC
+}
+
+
+ARGS_TO_MERGE = {
+        "ARGM-PRP": "ARGM-CAU",
+        "ARGM-PNC": "ARGM-CAU",
+        "ARGM-GOL": "ARGM-CAU",
+        "R-ARGM-PRP": "R-ARGM-CAU",
+        "R-ARGM-PNC": "R-ARGM-CAU",
+        "R-ARGM-GOL": "R-ARGM-CAU",
+        "ARGA": "ARG0",
+}
+
+
+def remap_labels(labels: List[str]) -> List[str]:
+
+    new_labels = []
+    for label in labels:
+
+        if label == "O":
+            new_labels.append(label)
+            continue
+
+        elif label[2:] in SENTS_TO_DROP:
+            return None
+
+        elif label[2:] in ARGS_TO_MERGE:
+            label = label[:2] + ARGS_TO_MERGE[label[2:]]
+
+        if label[2:] in ARGS_TO_DROP:
+            new_labels.append("O")
+
+        else:
+            new_labels.append(label)
+
+    return new_labels
+
+
+
 
 def _convert_tags_to_wordpiece_tags(tags: List[str], offsets: List[int]) -> List[str]:
     """
@@ -209,6 +286,9 @@ class SrlReader(DatasetReader):
                 yield self.text_to_instance(tokens, verb_label, tags)
             else:
                 for (_, tags) in sentence.srl_frames:
+                    tags = remap_labels(tags)
+                    if tags is None:
+                        continue
                     verb_indicator = [1 if label[-2:] == "-V" else 0 for label in tags]
                     yield self.text_to_instance(tokens, verb_indicator, tags)
 
