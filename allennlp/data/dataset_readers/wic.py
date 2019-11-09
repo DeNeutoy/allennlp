@@ -8,7 +8,7 @@ from pytorch_pretrained_bert.tokenization import BertTokenizer
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.fields import Field, TextField, LabelField, MetadataField, SequenceLabelField
 from allennlp.data.instance import Instance
-from allennlp.data import Token
+from allennlp.data.tokenizers.token import Token
 from allennlp.data.token_indexers import SingleIdTokenIndexer, TokenIndexer
 import glob
 
@@ -84,7 +84,7 @@ class WicReader(DatasetReader):
         wordpieces, offsets, start_offsets = self._wordpiece_tokenize_input(
             combined_sentences
         )
-        fields["sentences"] = TextField(
+        fields["tokens"] = TextField(
             [Token(t, text_id=self.bert_tokenizer.vocab[t]) for t in wordpieces],
             token_indexers=self._token_indexers,
         )
@@ -99,7 +99,7 @@ class WicReader(DatasetReader):
 
         # This forces the indices of the word that we care about to be 1.
         combined = [x + y for x, y in zip(sent1_converted_type_ids, sent2_converted_type_ids)]
-        fields["new_offsets"] = SequenceLabelField(combined, fields["sentences"])
+        fields["new_token_type_ids"] = SequenceLabelField(combined, fields["tokens"])
         if label is not None:
             fields["label"] = LabelField(label, skip_indexing=True)
 

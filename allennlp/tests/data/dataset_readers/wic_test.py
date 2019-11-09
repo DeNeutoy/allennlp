@@ -3,8 +3,8 @@
 from allennlp.data.dataset_readers.wic import WicReader
 from allennlp.common.testing import AllenNlpTestCase
 
-class TestWicReader(AllenNlpTestCase):
 
+class TestWicReader(AllenNlpTestCase):
 
     def test_read(self):
 
