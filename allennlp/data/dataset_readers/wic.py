@@ -15,6 +15,20 @@ import glob
 
 logger = logging.getLogger(__name__)
 
+def _convert_indices_to_wordpiece_indices(indices: List[int], offsets: List[int]):
+    j = 0
+    new_verb_indices = []
+    for i, offset in enumerate(offsets):
+        indicator = indices[i]
+        while j < offset:
+            new_verb_indices.append(indicator)
+            j += 1
+
+    # Add 0 indicators for cls and sep tokens.
+    return [0] + new_verb_indices + [0]
+
+
+
 
 @DatasetReader.register("snli")
 class WicReader(DatasetReader):
@@ -34,21 +48,16 @@ class WicReader(DatasetReader):
             self.bert_tokenizer = None
             self.lowercase_input = False
 
-
-
     @overrides
     def _read(self, file_path: str):
 
         data_path = glob.glob(os.path.join(file_path, "data.txt"))
         if not data_path:
             raise ValueError("Could not find any data.")
-
         label_path = glob.glob(os.path.join(file_path, "gold.txt"))
-        # if `file_path` is a URL, redirect to the cache
-        file_path = cached_path(file_path)
 
-        with open(file_path, "r") as snli_file:
-            logger.info("Reading SNLI instances from jsonl dataset at: %s", file_path)
+        with open(label_path, "r") as labels, open(data_path, "r") as data:
+            for label, line in zip(labels, data):
 
 
     @overrides
@@ -65,18 +74,25 @@ class WicReader(DatasetReader):
         index2 += len(sentence1) + 1
 
         combined_sentences = sentence1 + ["[SEP]"] + sentence2
-        wordpieces1, offsets1, start_offsets1 = self._wordpiece_tokenize_input(
+        wordpieces, offsets, start_offsets = self._wordpiece_tokenize_input(
             combined_sentences
         )
         fields["sentences"] = TextField(
-            [Token(t, text_id=self.bert_tokenizer.vocab[t]) for t in wordpieces1],
+            [Token(t, text_id=self.bert_tokenizer.vocab[t]) for t in wordpieces],
             token_indexers=self._token_indexers,
         )
 
-        token_type_ids = [0 for _ in wordpieces1]
-        token_type_ids[index1] =  1
-        token_type_ids[index2] =  1
-        fields["new_offsets"] = SequenceLabelField(token_type_ids, fields["sentences"])
+        sent1_token_type_ids = [0 for _ in combined_sentences]
+        sent2_token_type_ids = [0 for _ in combined_sentences]
+        sent1_token_type_ids[index1] = 1
+        sent2_token_type_ids[index2] = 1
+
+        sent1_converted_type_ids = _convert_indices_to_wordpiece_indices(sent1_token_type_ids, offsets)
+        sent2_converted_type_ids = _convert_indices_to_wordpiece_indices(sent2_token_type_ids, offsets)
+
+        # This forces the indices of the word that we care about to be 1.
+        combined = [x + y for x, y in zip(sent1_converted_type_ids, sent2_converted_type_ids)]
+        fields["new_offsets"] = SequenceLabelField(combined, fields["sentences"])
         if label:
             fields["label"] = LabelField(label)
 
