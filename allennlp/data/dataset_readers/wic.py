@@ -5,7 +5,6 @@ import os
 from overrides import overrides
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 
-from allennlp.common.file_utils import cached_path
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.fields import Field, TextField, LabelField, MetadataField, SequenceLabelField
 from allennlp.data.instance import Instance
@@ -14,6 +13,7 @@ from allennlp.data.token_indexers import SingleIdTokenIndexer, TokenIndexer
 import glob
 
 logger = logging.getLogger(__name__)
+
 
 def _convert_indices_to_wordpiece_indices(indices: List[int], offsets: List[int]):
     j = 0
@@ -30,7 +30,7 @@ def _convert_indices_to_wordpiece_indices(indices: List[int], offsets: List[int]
 
 
 
-@DatasetReader.register("snli")
+@DatasetReader.register("wic")
 class WicReader(DatasetReader):
 
     def __init__(
@@ -56,8 +56,15 @@ class WicReader(DatasetReader):
             raise ValueError("Could not find any data.")
         label_path = glob.glob(os.path.join(file_path, "gold.txt"))
 
-        with open(label_path, "r") as labels, open(data_path, "r") as data:
+        with open(label_path[0], "r") as labels, open(data_path[0], "r") as data:
             for label, line in zip(labels, data):
+                if label.strip() == "F":
+                    label = 0
+                else:
+                    label = 1
+                word, pos, indices, sent1, sent2 = line.strip().split("\t")
+                index1, index2 = [int(x) for x in indices.split("-")]
+                yield self.text_to_instance(sent1.split(" "), sent2.split(" "), index1, index2, label)
 
 
     @overrides
@@ -93,8 +100,8 @@ class WicReader(DatasetReader):
         # This forces the indices of the word that we care about to be 1.
         combined = [x + y for x, y in zip(sent1_converted_type_ids, sent2_converted_type_ids)]
         fields["new_offsets"] = SequenceLabelField(combined, fields["sentences"])
-        if label:
-            fields["label"] = LabelField(label)
+        if label is not None:
+            fields["label"] = LabelField(label, skip_indexing=True)
 
         metadata = {
             "sent1": sentence1,
@@ -148,7 +155,7 @@ class WicReader(DatasetReader):
         cumulative = 0
         for token in tokens:
             if self.lowercase_input:
-                token = token.lower()
+                token = token.lower() if token != "[SEP]" else token
             word_pieces = self.bert_tokenizer.wordpiece_tokenizer.tokenize(token)
             start_offsets.append(cumulative + 1)
             cumulative += len(word_pieces)
